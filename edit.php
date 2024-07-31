@@ -9,6 +9,19 @@ $file_info = ['fname' => '', 'lastModified' => ''];
 $cells = [];
 $sheets = [];
 
+// Connect to database
+function connect()
+{
+    $servername = "localhost";
+    $username = "root";
+    $password = "";
+    $dbname = "excel";
+
+    $conn = new mysqli($servername, $username, $password, $dbname) or die("Connection failed: " . $conn->connect_error);
+    return $conn;
+}
+
+// Load file and sheet data
 if ($file_id) {
     $conn = connect();
     $query = "SELECT * FROM files WHERE fid = $file_id";
@@ -27,31 +40,7 @@ if ($file_id) {
     $conn->close();
 }
 
-function connect()
-{
-    $servername = "localhost";
-    $username = "root";
-    $password = "";
-    $dbname = "excel";
-
-    $conn = new mysqli($servername, $username, $password, $dbname) or die("Connection failed: " . $conn->connect_error);
-    return $conn;
-}
-
-function pageHeader($heading)
-{
-    return <<<ZZZZ
-        <html><head><title>$heading</title></head><body>
-                <link rel="stylesheet" href="style.css">
-
-ZZZZ;
-}
-
-function pageFooter()
-{
-    return "</body></html>";
-}
-
+// Load data from JSON file
 function loadJsonData($file_id, $sheet_id)
 {
     global $json_file;
@@ -75,56 +64,7 @@ function loadJsonData($file_id, $sheet_id)
     return [];
 }
 
-
-function excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id)
-{
-    $html = "<table border='1' style='width:75%'>";
-    $html .= "<tr style='text-align: center'>
-            <th colspan='" . ($cols + 1) . "' style='text-align: left; padding-left: 10px;'><strong>File Name:</strong> " . htmlspecialchars($file_info['fname']) . "</th>
-            </tr>";
-    $html .= "<tr style='text-align: center'>
-            <th colspan='" . ($cols + 1) . "' style='text-align: left; padding-left: 10px;'><strong>Last Modified:</strong> " . htmlspecialchars($file_info['lastModified']) . "</th>
-            </tr>";
-    $html .= "<tr style='text-align: center'>
-            <th><a href='excel.php' class='action-link' style='color: blue'>&lt;=Back</a></th>";
-
-    for ($j = 1; $j <= $cols; $j++) {
-        $html .= "<th>" . chr(64 + $j) . "</th>"; // Column letters
-    }
-
-    $html .= "</tr>";
-
-    for ($i = 1; $i <= $rows; $i++) {
-        $html .= "<tr>";
-        $html .= "<td style='text-align: center;'>$i</td>";
-
-        for ($j = 1; $j <= $cols; $j++) {
-            $cell_key = "cell_{$i}_{$j}";
-            // Use null coalescing operator to avoid undefined key issue
-            $value = isset($cells[$cell_key]) ? htmlspecialchars($cells[$cell_key]) : '';
-            $html .= "<td><input type='text' name='$cell_key' data-row='$i' data-col='$j' value='$value' onchange='updateCell(this)' style='width:100%' /></td>";
-        }
-        $html .= "</tr>";
-    }
-
-    $html .= "<tr><td><strong>Sheets</strong></td>";
-    foreach ($sheets as $sheet) {
-        $sname = $sheet['sname'];
-        $sid = $sheet['sid'];
-        $html .= "<td style='text-align: center;'>
-            <a href='edit.php?fid=$file_id' class='action-link' style='color: blue'>sheet0</a>
-        </td>";
-        $html .= "<td style='text-align: center;'>
-            <a href='edit.php?fid=$file_id&sid=$sid' class='action-link' style='color: blue'>$sname</a>
-        </td>";
-    }
-    $html .= "</tr></table>";
-
-    return $html;
-}
-
-
-//json file operations
+// Save data to JSON file
 function saveToJsonFile($file_id, $sheet_id, $row, $col, $value, $file_name = '', $last_modified = '')
 {
     global $json_file;
@@ -171,11 +111,22 @@ function saveToJsonFile($file_id, $sheet_id, $row, $col, $value, $file_name = ''
     file_put_contents($json_file, json_encode($data, JSON_PRETTY_PRINT));
 }
 
-
-
-
-// Handle the POST request to update the JSON file
+// Handle POST request to update the JSON file
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['create_sheet'])) {
+        // Handle sheet creation
+        $new_sheet_name = $_POST['sheet_name'];
+        $conn = connect();
+        $query = "INSERT INTO sheets (fid, sname) VALUES ($file_id, '$new_sheet_name')";
+        if ($conn->query($query) === TRUE) {
+            echo json_encode(['status' => 'success']);
+        } else {
+            echo json_encode(['status' => 'error', 'message' => $conn->error]);
+        }
+        $conn->close();
+        exit;
+    }
+
     $file_id = isset($_POST['file_id']) ? intval($_POST['file_id']) : 0;
     $sheet_id = isset($_POST['sheet_id']) ? intval($_POST['sheet_id']) : 0;
     $row = isset($_POST['row']) ? intval($_POST['row']) : 0;
@@ -190,7 +141,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
+// Output the page
+function pageHeader($heading)
+{
+    return <<<ZZZZ
+        <html><head><title>$heading</title></head><body>
+                <link rel="stylesheet" href="style.css">
+ZZZZ;
+}
 
+function pageFooter()
+{
+    return "</body></html>";
+}
+
+function excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id)
+{
+    $html = "<table border='1' style='width:75%'>";
+    $html .= "<tr style='text-align: center'>
+        <th colspan='" . ($cols + 1) . "' style='text-align: left; padding-left: 10px;'><strong>File Name:</strong> " . htmlspecialchars($file_info['fname']) . "</th>
+        </tr>";
+    $html .= "<tr style='text-align: center'>
+        <th colspan='" . ($cols + 1) . "' style='text-align: left; padding-left: 10px;'><strong>Last Modified:</strong> " . htmlspecialchars($file_info['lastModified']) . "</th>
+        </tr>";
+    $html .= "<tr style='text-align: center'>
+        <th><a href='excel.php' class='action-link' style='color: blue'>&lt;=Back</a></th>";
+
+    for ($j = 1; $j <= $cols; $j++) {
+        $html .= "<th>" . chr(64 + $j) . "</th>"; // Column letters
+    }
+
+    $html .= "</tr>";
+
+    for ($i = 1; $i <= $rows; $i++) {
+        $html .= "<tr>";
+        $html .= "<td style='text-align: center;'>$i</td>";
+
+        for ($j = 1; $j <= $cols; $j++) {
+            $cell_key = "cell_{$i}_{$j}";
+            $value = isset($cells[$cell_key]) ? htmlspecialchars($cells[$cell_key]) : '';
+            $html .= "<td><input type='text' name='$cell_key' data-row='$i' data-col='$j' value='$value' onchange='updateCell(this)' style='width:100%' /></td>";
+        }
+        $html .= "</tr>";
+    }
+
+    $html .= "<tr><td><a href='#' onclick='createNewSheet()'>Sheets</a></td>";
+    foreach ($sheets as $sheet) {
+        $sname = $sheet['sname'];
+        $sid = $sheet['sid'];
+        $html .= "<td style='text-align: center;'>
+            <a href='edit.php?fid=$file_id&sid=$sid' class='action-link' style='color: blue'>$sname</a>
+        </td>";
+    }
+    //$html .= "<td><a href='#' onclick='createNewSheet()' class='action-link' style='color: blue'>+ New Sheet</a></td></tr></table>";
+
+    return $html;
+}
 
 echo '
     ' . pageHeader("Edit File") . '
@@ -235,6 +241,36 @@ echo '
                 console.error("Error updating cell:", error);
             });
         }
-    </script>
 
+        function createNewSheet() {
+            var fileId = ' . $file_id . ';
+            var sheetName = prompt("Enter the name of the new sheet:");
+
+            if (sheetName) {
+                fetch("", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    body: new URLSearchParams({
+                        create_sheet: true,
+                        file_id: fileId,
+                        sheet_name: sheetName
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === "success") {
+                        location.reload();
+                    } else {
+                        alert("Error creating sheet: " + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error:", error);
+                });
+            }
+        }
+    </script>
 ';
+?>
