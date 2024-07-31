@@ -8,6 +8,7 @@ $sheet_id = isset($_GET['sid']) ? intval($_GET['sid']) : 0;
 $file_info = ['fname' => '', 'lastModified' => ''];
 $cells = [];
 $sheets = [];
+
 if ($file_id) {
     $conn = connect();
     $query = "SELECT * FROM files WHERE fid = $file_id";
@@ -41,6 +42,8 @@ function pageHeader($heading)
 {
     return <<<ZZZZ
         <html><head><title>$heading</title></head><body>
+                <link rel="stylesheet" href="style.css">
+
 ZZZZ;
 }
 
@@ -65,7 +68,6 @@ function loadJsonData($file_id, $sheet_id)
 
     foreach ($data as $entry) {
         if ($entry['file_id'] == $file_id) {
-            // Ensure the 'sheets' and 'cells' keys exist
             $sheet_data = $entry['sheets'][$sheet_id] ?? [];
             return $sheet_data;
         }
@@ -105,7 +107,7 @@ function excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id)
         $html .= "</tr>";
     }
 
-    $html .= "<tr><td style='text-align: center;'><strong>Sheets</strong></td>";
+    $html .= "<tr><td><strong>Sheets</strong></td>";
     foreach ($sheets as $sheet) {
         $sname = $sheet['sname'];
         $sid = $sheet['sid'];
@@ -123,7 +125,7 @@ function excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id)
 
 
 //json file operations
-function saveToJsonFile($file_id, $sheet_id, $row, $col, $value)
+function saveToJsonFile($file_id, $sheet_id, $row, $col, $value, $file_name = '', $last_modified = '')
 {
     global $json_file;
     $data = [];
@@ -144,6 +146,10 @@ function saveToJsonFile($file_id, $sheet_id, $row, $col, $value)
                 $entry['sheets'][$sheet_id] = [];
             }
             $entry['sheets'][$sheet_id]["cell_{$row}_{$col}"] = $value;
+            $entry['file_info'] = [
+                'fname' => $file_name,
+                'lastModified' => $last_modified
+            ];
             $found = true;
             break;
         }
@@ -152,7 +158,10 @@ function saveToJsonFile($file_id, $sheet_id, $row, $col, $value)
     if (!$found) {
         $data[] = [
             'file_id' => $file_id,
-            'file_info' => ['fname' => '', 'lastModified' => ''],
+            'file_info' => [
+                'fname' => $file_name,
+                'lastModified' => $last_modified
+            ],
             'sheets' => [
                 $sheet_id => ["cell_{$row}_{$col}" => $value]
             ]
@@ -164,6 +173,7 @@ function saveToJsonFile($file_id, $sheet_id, $row, $col, $value)
 
 
 
+
 // Handle the POST request to update the JSON file
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $file_id = isset($_POST['file_id']) ? intval($_POST['file_id']) : 0;
@@ -171,18 +181,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $row = isset($_POST['row']) ? intval($_POST['row']) : 0;
     $col = isset($_POST['col']) ? intval($_POST['col']) : 0;
     $value = isset($_POST['value']) ? $_POST['value'] : '';
+    $file_name = isset($_POST['file_name']) ? $_POST['file_name'] : '';
+    $last_modified = isset($_POST['last_modified']) ? $_POST['last_modified'] : '';
 
-    saveToJsonFile($file_id, $sheet_id, $row, $col, $value);
+    saveToJsonFile($file_id, $sheet_id, $row, $col, $value, $file_name, $last_modified);
 
     echo json_encode(['status' => 'success']);
     exit;
 }
 
 
+
 echo '
     ' . pageHeader("Edit File") . '
     <h2>Edit File fid: ' . htmlspecialchars($file_id) . '</h2>
-    <form method="POST" action="#">
+    <form method="POST">
+        <input type="hidden" name="file_id" value="' . htmlspecialchars($file_id) . '">
+        <input type="hidden" name="file_name" value="' . htmlspecialchars($file_info['fname']) . '">
+        <input type="hidden" name="last_modified" value="' . htmlspecialchars($file_info['lastModified']) . '">
         ' . excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id) . '
     </form>
     ' . pageFooter() . '
@@ -193,6 +209,8 @@ echo '
             var value = input.value;
             var fileId = ' . $file_id . ';
             var sheetId = ' . $sheet_id . ';
+            var fileName = document.querySelector("input[name=file_name]").value;
+            var lastModified = document.querySelector("input[name=last_modified]").value;
 
             fetch("", {
                 method: "POST",
@@ -204,7 +222,9 @@ echo '
                     row: row,
                     col: col,
                     value: value,
-                    sheet_id: sheetId
+                    sheet_id: sheetId,
+                    file_name: fileName,
+                    last_modified: lastModified
                 })
             })
             .then(response => response.json())
@@ -216,4 +236,5 @@ echo '
             });
         }
     </script>
+
 ';

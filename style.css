@@ -1,0 +1,72 @@
+/* Basic Reset */
+table {
+  width: 50%;
+  border-collapse: collapse;
+  margin: 20px 0;
+}
+
+thead th {
+  background-color: #f4f4f4; /* Light gray background */
+  border-bottom: 2px solid #dcdcdc; /* Gray border */
+  color: #333;
+  padding: 10px;
+  text-align: left;
+  font-weight: bold;
+}
+
+tbody td {
+  border-bottom: 1px solid #dcdcdc; /* Gray border */
+  padding: 8px;
+}
+
+tr:nth-child(even) {
+  background-color: #fafafa; /* Very light gray */
+}
+
+tr:hover {
+  background-color: #e0e0e0; /* Light gray for hover effect */
+}
+
+caption {
+  padding: 10px;
+  font-size: 1.2em;
+  font-weight: bold;
+  color: #333;
+  text-align: left;
+}
+
+/* Style for the input fields inside table cells */
+input[type="text"] {
+  border: 1px solid #bfbfbf;
+  border-radius: 2px;
+  padding: 5px;
+  font-size: 0.9em;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+input[type="text"]:focus {
+  border-color: #0078d4; /* Blue color similar to Excel */
+  outline: 2px solid rgb(68, 247, 45);
+  box-shadow: 0 0 3px rgba(0, 120, 212, 0.5);
+}
+
+/* Style for links inside the table */
+a.action-link {
+  color: #0078d4; /* Blue color similar to Excel */
+  text-decoration: none;
+}
+
+a.action-link:hover {
+  text-decoration: underline;
+}
+
+a {
+  font-weight: normal;
+  transition: filter 0.3s;
+}
+
+a:hover {
+  filter: brightness(95%);
+  font-weight: bold;
+}

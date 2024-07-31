@@ -1,6 +1,7 @@
 <?php
 $conn = connect();
 
+
 function connect()
 {
     $servername = "localhost";
@@ -29,6 +30,8 @@ function pageHeader($heading)
 {
     return <<<ZZZZ
         <html><head><title>$heading</title>
+        <link rel="stylesheet" href="style.css">
+
         <script>
        function addRow() {
     var fname = document.getElementById("fname").value;
