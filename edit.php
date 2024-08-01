@@ -28,7 +28,7 @@ if ($file_id) {
     $result = $conn->query($query);
     if ($result->num_rows > 0) {
         $file_info = $result->fetch_assoc();
-        $cells = loadJsonData($file_id, $sheet_id);
+        $cells = loadFromDatabase($file_id, $sheet_id);
     }
     $querySheets = "SELECT sid, sname FROM sheets WHERE fid = $file_id";
     $sheetsResult = $conn->query($querySheets);
@@ -40,76 +40,46 @@ if ($file_id) {
     $conn->close();
 }
 
-// Load data from JSON file
-function loadJsonData($file_id, $sheet_id)
+
+
+// Load data from DataBase
+function loadFromDatabase($file_id, $sheet_id)
 {
-    global $json_file;
-    $data = [];
 
-    if (file_exists($json_file)) {
-        $json_data = file_get_contents($json_file);
-        $data = json_decode($json_data, true);
+    // Load from database
+    $conn = connect();
+    $query = "SELECT row, col, data FROM cell WHERE sid = $sheet_id";
+    $result = $conn->query($query);
 
-        if ($data === null) {
-            $data = [];
+    if ($result->num_rows > 0) {
+        $sheet_data = [];
+        while ($row = $result->fetch_assoc()) {
+            $rowNumber = $row['row'];
+            $colNumber = $row['col'];
+            $cellKey = "cell_{$rowNumber}_{$colNumber}";
+            $sheet_data[$cellKey] = $row['data'];
         }
+        return $sheet_data;
     }
 
-    foreach ($data as $entry) {
-        if ($entry['file_id'] == $file_id) {
-            $sheet_data = $entry['sheets'][$sheet_id] ?? [];
-            return $sheet_data;
-        }
-    }
+    $conn->close();
     return [];
 }
 
-// Save data to JSON file
-function saveToJsonFile($file_id, $sheet_id, $row, $col, $value, $file_name = '', $last_modified = '')
+
+
+// Save data to database
+function saveToDatabase($file_id, $sheet_id, $row, $col, $value)
 {
-    global $json_file;
-    $data = [];
 
-    if (file_exists($json_file)) {
-        $json_data = file_get_contents($json_file);
-        $data = json_decode($json_data, true);
-
-        if ($data === null) {
-            $data = [];
-        }
-    }
-
-    $found = false;
-    foreach ($data as &$entry) {
-        if ($entry['file_id'] == $file_id) {
-            if (!isset($entry['sheets'][$sheet_id])) {
-                $entry['sheets'][$sheet_id] = [];
-            }
-            $entry['sheets'][$sheet_id]["cell_{$row}_{$col}"] = $value;
-            $entry['file_info'] = [
-                'fname' => $file_name,
-                'lastModified' => $last_modified
-            ];
-            $found = true;
-            break;
-        }
-    }
-
-    if (!$found) {
-        $data[] = [
-            'file_id' => $file_id,
-            'file_info' => [
-                'fname' => $file_name,
-                'lastModified' => $last_modified
-            ],
-            'sheets' => [
-                $sheet_id => ["cell_{$row}_{$col}" => $value]
-            ]
-        ];
-    }
-
-    file_put_contents($json_file, json_encode($data, JSON_PRETTY_PRINT));
+    $conn = connect();
+    $stmt = $conn->prepare("INSERT INTO cell (sid, row, col, data) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE data = ?");
+    $stmt->bind_param("iiiss", $sheet_id, $row, $col, $value, $value);
+    $stmt->execute();
+    $stmt->close();
+    $conn->close();
 }
+
 
 // Handle POST request to update the JSON file
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -135,9 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $file_name = isset($_POST['file_name']) ? $_POST['file_name'] : '';
     $last_modified = isset($_POST['last_modified']) ? $_POST['last_modified'] : '';
 
-    saveToJsonFile($file_id, $sheet_id, $row, $col, $value, $file_name, $last_modified);
-
-    echo json_encode(['status' => 'success']);
+    saveToDatabase($file_id, $sheet_id, $row, $col, $value);
     exit;
 }
 
@@ -147,6 +115,22 @@ function pageHeader($heading)
     return <<<ZZZZ
         <html><head><title>$heading</title></head><body>
                 <link rel="stylesheet" href="style.css">
+                      <div id="context-menu" style="display: none; position: absolute; background-color: white; border: 1px solid #ccc; z-index: 1000;">
+                    <ul style="list-style: none; margin: 0; padding: 0;">
+                        <li><a href="#" id="cut-cell" style="display: block; padding: 8px; text-decoration: none; color: black;">Cut</a></li>
+                        <li><a href="#" id="copy-cell" style="display: block; padding: 8px; text-decoration: none; color: black;">Copy</a></li>
+                        <li><a href="#" id="paste-cell" style="display: block; padding: 8px; text-decoration: none; color: black;">Paste</a></li>
+                        <li id="paste-special">
+                            <a href="#" style="display: block; padding: 8px; text-decoration: none; color: black;">Paste Special</a>
+                            <ul id="paste-special-menu" style="display: none; position: absolute; left: 100%; top: 0; background-color: white; border: 1px solid #ccc; list-style: none; padding: 0; margin: 0;">
+                                <li><a href="#" id="Element1" style="display: block; padding: 8px; text-decoration: none; color: black;">Element1</a></li>
+                                <li><a href="#" id="Element2" style="display: block; padding: 8px; text-decoration: none; color: black;">Element2</a></li>
+                                <li><a href="#" id="Element3" style="display: block; padding: 8px; text-decoration: none; color: black;">Element3</a></li>
+
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
 ZZZZ;
 }
 
@@ -209,6 +193,68 @@ echo '
     </form>
     ' . pageFooter() . '
     <script>
+        var clipboard = ""; // Variable to store copied data
+        var contextMenu = document.getElementById("context-menu");
+        var currentInput = null;
+
+        document.addEventListener("contextmenu", function(e) {
+            e.preventDefault();
+            if (e.target.tagName === "INPUT") {
+                currentInput = e.target;
+                var x = e.clientX;
+                var y = e.clientY;
+                contextMenu.style.left = x + "px";
+                contextMenu.style.top = y + "px";
+                contextMenu.style.display = "block";
+            } else {
+                contextMenu.style.display = "none";
+            }
+        });
+
+        document.getElementById("paste-special").addEventListener("mouseover", function(){
+            let menu = document.getElementById("paste-special-menu")
+            menu.style.display = "block"
+        })
+
+        document.getElementById("paste-special").addEventListener("mouseleave", function(){
+            let menu = document.getElementById("paste-special-menu")
+            menu.style.display = "none";
+        })
+
+        document.addEventListener("click", function(e) {
+            if (e.target.closest("#context-menu")) return;
+            contextMenu.style.display = "none";
+        });
+
+            document.getElementById("cut-cell").addEventListener("click", function() {
+            if (currentInput) {
+                navigator.clipboard.writeText(currentInput.value)
+                currentInput.value = "";
+                updateCell(currentInput); // Update the cell in the backend
+            }
+            contextMenu.style.display = "none";
+        });
+
+        document.getElementById("copy-cell").addEventListener("click", function() {
+            if (currentInput) {
+                console.log(currentInput)
+                navigator.clipboard.writeText(currentInput.value)
+            }
+            contextMenu.style.display = "none";
+        });
+
+        document.getElementById("paste-cell").addEventListener("click", function() {
+            if (currentInput) {
+                navigator.clipboard.readText().then(text => {
+                    currentInput.value = text;
+                    updateCell(currentInput); // Update the cell in the backend
+                })
+            }
+            contextMenu.style.display = "none";
+        });
+
+    
+
         function updateCell(input) {
             var row = input.getAttribute("data-row");
             var col = input.getAttribute("data-col");
@@ -273,4 +319,3 @@ echo '
         }
     </script>
 ';
-?>
