@@ -111,4 +111,11 @@ a:hover {
     background-color: #f0f0f0;
 }
 
+.file-info-header {
+    background: #d2f4cf;
+    text-align: center;
+    padding: 10px;
+}
+
+
 

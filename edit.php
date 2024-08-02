@@ -1,14 +1,11 @@
 <?php
-$rows = 10;
-$cols = 10;
-$json_file = 'data.json'; // Path to your JSON file
 
 $file_id = isset($_GET['fid']) ? intval($_GET['fid']) : 0;
 $sheet_id = isset($_GET['sid']) ? intval($_GET['sid']) : 0;
 $file_info = ['fname' => '', 'lastModified' => ''];
 $cells = [];
 $sheets = [];
-
+$currentSheet = ['rows' => 10, 'cols' => 10]; // Default values
 // Connect to database
 function connect()
 {
@@ -20,29 +17,6 @@ function connect()
     $conn = new mysqli($servername, $username, $password, $dbname) or die("Connection failed: " . $conn->connect_error);
     return $conn;
 }
-
-// Load file and sheet data
-if ($file_id) {
-    $conn = connect();
-    $query = "SELECT * FROM files WHERE fid = $file_id";
-    $result = $conn->query($query);
-    if ($result->num_rows > 0) {
-        $file_info = $result->fetch_assoc();
-        $cells = loadFromDatabase($file_id, $sheet_id);
-    }
-    $querySheets = "SELECT sid, sname FROM sheets WHERE fid = $file_id";
-    $sheetsResult = $conn->query($querySheets);
-    if ($sheetsResult->num_rows > 0) {
-        while ($sheet = $sheetsResult->fetch_assoc()) {
-            array_push($sheets, $sheet);
-        }
-    }
-    $conn->close();
-}
-
-
-
-// Load data from DataBase
 function loadFromDatabase($file_id, $sheet_id)
 {
 
@@ -65,10 +39,6 @@ function loadFromDatabase($file_id, $sheet_id)
     $conn->close();
     return [];
 }
-
-
-
-// Save data to database
 function saveToDatabase($file_id, $sheet_id, $row, $col, $value)
 {
 
@@ -80,14 +50,35 @@ function saveToDatabase($file_id, $sheet_id, $row, $col, $value)
     $conn->close();
 }
 
+// Load file and sheet data
+if ($file_id) {
+    $conn = connect();
+    $query = "SELECT * FROM files WHERE fid = $file_id";
+    $result = $conn->query($query);
+    if ($result->num_rows > 0) {
+        $file_info = $result->fetch_assoc();
+        $cells = loadFromDatabase($file_id, $sheet_id);
+    }
+    $querySheets = "SELECT sid, sname, `rows`, cols FROM sheets WHERE fid = $file_id";
+    $sheetsResult = $conn->query($querySheets);
+    if ($sheetsResult->num_rows > 0) {
+        while ($sheet = $sheetsResult->fetch_assoc()) {
+            array_push($sheets, $sheet);
+            if ($sheet_id == $sheet['sid']) {
+                // Setting current sheet
+                $currentSheet = $sheet;
+            }
+        }
+    }
+    $conn->close();
+}
 
-// Handle POST request to update the JSON file
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['create_sheet'])) {
         // Handle sheet creation
         $new_sheet_name = $_POST['sheet_name'];
         $conn = connect();
-        $query = "INSERT INTO sheets (fid, sname) VALUES ($file_id, '$new_sheet_name')";
+        $query = "INSERT INTO sheets (fid, sname,`rows`,cols) VALUES ($file_id, '$new_sheet_name','10','10)";
         if ($conn->query($query) === TRUE) {
             echo json_encode(['status' => 'success']);
         } else {
@@ -96,6 +87,122 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $conn->close();
         exit;
     }
+
+    if (isset($_POST['increase_row'])) {
+        // Handle increasing row count
+        $sheet_id = intval($_POST['sheet_id']);
+        $clicked_row = intval($_POST['row_no']);
+        $conn = connect();
+
+        // Shift rows down starting from the clicked row
+        $queryShiftRows = "UPDATE cell SET `row` = `row` + 1 WHERE sid = $sheet_id AND `row` > $clicked_row";
+        if ($conn->query($queryShiftRows) !== TRUE) {
+            echo json_encode(['status' => 'error', 'message' => $conn->error]);
+            $conn->close();
+            exit;
+        }
+
+        // Increment the row count for the sheet
+        $queryIncrementRowCount = "UPDATE sheets SET `rows` = `rows` + 1 WHERE sid = $sheet_id";
+        if ($conn->query($queryIncrementRowCount) === TRUE) {
+            echo json_encode(['status' => 'success']);
+        } else {
+            echo json_encode(['status' => 'error', 'message' => $conn->error]);
+        }
+        $conn->close();
+        exit;
+    }
+    if (isset($_POST['increase_col'])) {
+        // Handle increasing row count
+        $sheet_id = intval($_POST['sheet_id']);
+        $clicked_col = intval($_POST['col_no']);
+        $conn = connect();
+
+        // Shift rows down starting from the clicked row
+        $queryShiftCols = "UPDATE cell SET `col` = `col` + 1 WHERE sid = $sheet_id AND `col` > $clicked_col";
+        if ($conn->query($queryShiftCols) !== TRUE) {
+            echo json_encode(['status' => 'error', 'message' => $conn->error]);
+            $conn->close();
+            exit;
+        }
+
+        // Increment the row count for the sheet
+        $queryIncrementColCount = "UPDATE sheets SET `cols` = `cols` + 1 WHERE sid = $sheet_id";
+        if ($conn->query($queryIncrementColCount) === TRUE) {
+            echo json_encode(['status' => 'success']);
+        } else {
+            echo json_encode(['status' => 'error', 'message' => $conn->error]);
+        }
+        $conn->close();
+        exit;
+    }
+    if (isset($_POST['delete_row'])) {
+        // Handle row deletion
+        $sheet_id = intval($_POST['sheet_id']);
+        $row_no = intval($_POST['row_no']);
+        $conn = connect();
+
+        // Delete rows where the row number matches the one to delete
+        $queryDeleteRow = "DELETE FROM cell WHERE sid = $sheet_id AND `row` = $row_no";
+        if ($conn->query($queryDeleteRow) !== TRUE) {
+            echo json_encode(['status' => 'error', 'message' => $conn->error]);
+            $conn->close();
+            exit;
+        }
+
+        // Shift rows up starting from the row after the deleted row
+        $queryShiftRows = "UPDATE cell SET `row` = `row` - 1 WHERE sid = $sheet_id AND `row` > $row_no";
+        if ($conn->query($queryShiftRows) !== TRUE) {
+            echo json_encode(['status' => 'error', 'message' => $conn->error]);
+            $conn->close();
+            exit;
+        }
+
+        // Decrement the row count for the sheet
+        $queryDecrementRowCount = "UPDATE sheets SET `rows` = `rows` - 1 WHERE sid = $sheet_id";
+        if ($conn->query($queryDecrementRowCount) === TRUE) {
+            echo json_encode(['status' => 'success']);
+        } else {
+            echo json_encode(['status' => 'error', 'message' => $conn->error]);
+        }
+        $conn->close();
+        exit;
+    }
+
+    if (isset($_POST['delete_col'])) {
+        // Handle column deletion
+        $sheet_id = intval($_POST['sheet_id']);
+        $col_no = intval($_POST['col_no']);
+        $conn = connect();
+
+        // Delete column data from database
+        $queryDeleteCol = "DELETE FROM cell WHERE sid = $sheet_id AND `col` = $col_no";
+        if ($conn->query($queryDeleteCol) !== TRUE) {
+            echo json_encode(['status' => 'error', 'message' => $conn->error]);
+            $conn->close();
+            exit;
+        }
+
+        // Shift columns left starting from the column after the deleted column
+        $queryShiftCols = "UPDATE cell SET `col` = `col` - 1 WHERE sid = $sheet_id AND `col` > $col_no";
+        if ($conn->query($queryShiftCols) !== TRUE) {
+            echo json_encode(['status' => 'error', 'message' => $conn->error]);
+            $conn->close();
+            exit;
+        }
+
+        // Decrement the column count for the sheet
+        $queryDecrementColCount = "UPDATE sheets SET `cols` = `cols` - 1 WHERE sid = $sheet_id";
+        if ($conn->query($queryDecrementColCount) === TRUE) {
+            echo json_encode(['status' => 'success']);
+        } else {
+            echo json_encode(['status' => 'error', 'message' => $conn->error]);
+        }
+        $conn->close();
+        exit;
+    }
+
+
 
     $file_id = isset($_POST['file_id']) ? intval($_POST['file_id']) : 0;
     $sheet_id = isset($_POST['sheet_id']) ? intval($_POST['sheet_id']) : 0;
@@ -109,6 +216,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
+
 // Output the page
 function pageHeader($heading)
 {
@@ -120,15 +228,11 @@ function pageHeader($heading)
                         <li><a href="#" id="cut-cell" style="display: block; padding: 8px; text-decoration: none; color: black;">Cut</a></li>
                         <li><a href="#" id="copy-cell" style="display: block; padding: 8px; text-decoration: none; color: black;">Copy</a></li>
                         <li><a href="#" id="paste-cell" style="display: block; padding: 8px; text-decoration: none; color: black;">Paste</a></li>
-                        <li id="paste-special">
-                            <a href="#" style="display: block; padding: 8px; text-decoration: none; color: black;">Paste Special</a>
-                            <ul id="paste-special-menu" style="display: none; position: absolute; left: 100%; top: 0; background-color: white; border: 1px solid #ccc; list-style: none; padding: 0; margin: 0;">
-                                <li><a href="#" id="Element1" style="display: block; padding: 8px; text-decoration: none; color: black;">Element1</a></li>
-                                <li><a href="#" id="Element2" style="display: block; padding: 8px; text-decoration: none; color: black;">Element2</a></li>
-                                <li><a href="#" id="Element3" style="display: block; padding: 8px; text-decoration: none; color: black;">Element3</a></li>
+                        <li><a href="#" id="insert_row" style="display: block; padding: 8px; text-decoration: none; color: black;">Insert new row </a></li>
+                        <li><a href="#" id="insert_col" style="display: block; padding: 8px; text-decoration: none; color: black;">Insert new col</a></li>
+                        <li><a href="#" id="delete_row" style="display: block; padding: 8px; text-decoration: none; color: black;">Delete row </a></li>
+                        <li><a href="#" id="delete_col" style="display: block; padding: 8px; text-decoration: none; color: black;">Delete col </a></li>
 
-                            </ul>
-                        </li>
                     </ul>
                 </div>
 ZZZZ;
@@ -143,13 +247,13 @@ function excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id)
 {
     $html = "<table border='1' style='width:75%'>";
     $html .= "<tr style='text-align: center'>
-        <th colspan='" . ($cols + 1) . "' style='text-align: left; padding-left: 10px;'><strong>File Name:</strong> " . htmlspecialchars($file_info['fname']) . "</th>
+        <th class='file-info-header'  colspan='" . ($cols + 1) . "' style='text-align: left; padding-left: 10px;'><strong>File Name:</strong> " . htmlspecialchars($file_info['fname']) . "</th>
         </tr>";
     $html .= "<tr style='text-align: center'>
-        <th colspan='" . ($cols + 1) . "' style='text-align: left; padding-left: 10px;'><strong>Last Modified:</strong> " . htmlspecialchars($file_info['lastModified']) . "</th>
+        <th class='file-info-header'  colspan='" . ($cols + 1) . "' style='text-align: left; padding-left: 10px;'><strong>Last Modified:</strong> " . htmlspecialchars($file_info['lastModified']) . "</th>
         </tr>";
     $html .= "<tr style='text-align: center'>
-        <th><a href='excel.php' class='action-link' style='color: blue'>&lt;=Back</a></th>";
+        <th class='file-info-header' ><a href='excel.php' class='action-link' style='color: blue'>&lt;=Back</a></th>";
 
     for ($j = 1; $j <= $cols; $j++) {
         $html .= "<th>" . chr(64 + $j) . "</th>"; // Column letters
@@ -169,7 +273,7 @@ function excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id)
         $html .= "</tr>";
     }
 
-    $html .= "<tr><td><a href='#' onclick='createNewSheet()'>Sheets</a></td>";
+    $html .= "<tr><td><a href='#' onclick='createNewSheet()' style='color:green'>Sheets</a></td>";
     foreach ($sheets as $sheet) {
         $sname = $sheet['sname'];
         $sid = $sheet['sid'];
@@ -177,7 +281,6 @@ function excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id)
             <a href='edit.php?fid=$file_id&sid=$sid' class='action-link' style='color: blue'>$sname</a>
         </td>";
     }
-    //$html .= "<td><a href='#' onclick='createNewSheet()' class='action-link' style='color: blue'>+ New Sheet</a></td></tr></table>";
 
     return $html;
 }
@@ -189,10 +292,11 @@ echo '
         <input type="hidden" name="file_id" value="' . htmlspecialchars($file_id) . '">
         <input type="hidden" name="file_name" value="' . htmlspecialchars($file_info['fname']) . '">
         <input type="hidden" name="last_modified" value="' . htmlspecialchars($file_info['lastModified']) . '">
-        ' . excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id) . '
+        ' . excel($currentSheet['rows'], $currentSheet['cols'], $file_info, $cells, $sheets, $file_id, $sheet_id) . '
     </form>
     ' . pageFooter() . '
     <script>
+        var clickedCell = {}
         var clipboard = ""; // Variable to store copied data
         var contextMenu = document.getElementById("context-menu");
         var currentInput = null;
@@ -206,20 +310,12 @@ echo '
                 contextMenu.style.left = x + "px";
                 contextMenu.style.top = y + "px";
                 contextMenu.style.display = "block";
+                clickedCell = {row:e.target.getAttribute("data-row")
+                ,col:e.target.getAttribute("data-col")};
             } else {
                 contextMenu.style.display = "none";
             }
         });
-
-        document.getElementById("paste-special").addEventListener("mouseover", function(){
-            let menu = document.getElementById("paste-special-menu")
-            menu.style.display = "block"
-        })
-
-        document.getElementById("paste-special").addEventListener("mouseleave", function(){
-            let menu = document.getElementById("paste-special-menu")
-            menu.style.display = "none";
-        })
 
         document.addEventListener("click", function(e) {
             if (e.target.closest("#context-menu")) return;
@@ -253,6 +349,136 @@ echo '
             contextMenu.style.display = "none";
         });
 
+        document.getElementById("insert_row").addEventListener("click", function() {
+            var fileId = ' . $file_id . ';
+            var sheetId = ' . $sheet_id . ';
+            var rowNo = clickedCell.row;
+            
+            fetch("", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: new URLSearchParams({
+                    increase_row: true,
+                    file_id: fileId,
+                    sheet_id: sheetId,
+                    row_no: rowNo
+
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "success") {
+                    location.reload();
+                } else {
+                    alert("Error increasing row count: " + data.message);
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+        });
+});
+
+ document.getElementById("insert_col").addEventListener("click", function() {
+            var fileId = ' . $file_id . ';
+            var sheetId = ' . $sheet_id . ';
+            var colNo = clickedCell.col;
+            
+            fetch("", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: new URLSearchParams({
+                    increase_col: true,
+                    file_id: fileId,
+                    sheet_id: sheetId,
+                    col_no: colNo
+
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "success") {
+                    location.reload();
+                } else {
+                    alert("Error increasing col count: " + data.message);
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+        });
+});
+
+        document.getElementById("delete_row").addEventListener("click", function() {
+    if (clickedCell.row) {
+        var fileId = ' . $file_id . ';
+        var sheetId = ' . $sheet_id . ';
+        var rowNo = clickedCell.row;
+
+        fetch("", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: new URLSearchParams({
+                delete_row: true,
+                file_id: fileId,
+                sheet_id: sheetId,
+                row_no: rowNo
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === "success") {
+                location.reload();
+            } else {
+                alert("Error deleting row: " + data.message);
+            }
+        })
+        .catch(error => {
+            console.error("Error:", error);
+        });
+    }
+    contextMenu.style.display = "none";
+});
+
+
+document.getElementById("delete_col").addEventListener("click", function() {
+    if (clickedCell.col) {
+        var fileId = ' . $file_id . ';
+        var sheetId = ' . $sheet_id . ';
+        var colNo = clickedCell.col;
+
+        fetch("", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: new URLSearchParams({
+                delete_col: true,
+                file_id: fileId,
+                sheet_id: sheetId,
+                col_no: colNo
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === "success") {
+                location.reload();
+            } else {
+                alert("Error deleting column: " + data.message);
+            }
+        })
+        .catch(error => {
+            console.error("Error:", error);
+        });
+    }
+    contextMenu.style.display = "none";
+});
+
+
     
 
         function updateCell(input) {
@@ -279,13 +505,6 @@ echo '
                     last_modified: lastModified
                 })
             })
-            .then(response => response.json())
-            .then(data => {
-                console.log("Update successful:", data);
-            })
-            .catch(error => {
-                console.error("Error updating cell:", error);
-            });
         }
 
         function createNewSheet() {
