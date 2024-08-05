@@ -1,5 +1,4 @@
 <?php
-
 $file_id = isset($_GET['fid']) ? intval($_GET['fid']) : 0;
 $sheet_id = isset($_GET['sid']) ? intval($_GET['sid']) : 0;
 $file_info = ['fname' => '', 'lastModified' => ''];
@@ -74,9 +73,6 @@ function saveToDatabase($file_id, $sheet_id, $row, $col, $value)
     $conn->close();
 }
 
-
-// Handle POST request to update the JSON file
-// Handle POST request to update the JSON file
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['create_sheet'])) {
         // Handle sheet creation
@@ -293,7 +289,7 @@ function excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id)
 }
 
 echo '
-    ' . pageHeader("Edit File") . '
+    ' . pageHeader("Excel File") . '
     <h2>Edit File fid: ' . htmlspecialchars($file_id) . '</h2>
     <form method="POST">
         <input type="hidden" name="file_id" value="' . htmlspecialchars($file_id) . '">
@@ -380,8 +376,8 @@ document.addEventListener("keydown", function(e) {
     }
 
     let nextInput = document.querySelector(`input[data-row="${row}"][data-col="${col}"]`);
-    currentInput = nextInput
     if (nextInput) {
+        currentInput = nextInput
         nextInput.focus();
     } else {
         console.log("No input found at row " + row + ", col " + col);
