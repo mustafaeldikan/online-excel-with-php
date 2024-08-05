@@ -39,17 +39,6 @@ function loadFromDatabase($file_id, $sheet_id)
     $conn->close();
     return [];
 }
-function saveToDatabase($file_id, $sheet_id, $row, $col, $value)
-{
-
-    $conn = connect();
-    $stmt = $conn->prepare("INSERT INTO cell (sid, row, col, data) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE data = ?");
-    $stmt->bind_param("iiiss", $sheet_id, $row, $col, $value, $value);
-    $stmt->execute();
-    $stmt->close();
-    $conn->close();
-}
-
 // Load file and sheet data
 if ($file_id) {
     $conn = connect();
@@ -65,7 +54,6 @@ if ($file_id) {
         while ($sheet = $sheetsResult->fetch_assoc()) {
             array_push($sheets, $sheet);
             if ($sheet_id == $sheet['sid']) {
-                // Setting current sheet
                 $currentSheet = $sheet;
             }
         }
@@ -73,12 +61,28 @@ if ($file_id) {
     $conn->close();
 }
 
+
+// Save data to database
+function saveToDatabase($file_id, $sheet_id, $row, $col, $value)
+{
+
+    $conn = connect();
+    $stmt = $conn->prepare("INSERT INTO cell (sid, row, col, data) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE data = ?");
+    $stmt->bind_param("iiiss", $sheet_id, $row, $col, $value, $value);
+    $stmt->execute();
+    $stmt->close();
+    $conn->close();
+}
+
+
+// Handle POST request to update the JSON file
+// Handle POST request to update the JSON file
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['create_sheet'])) {
         // Handle sheet creation
         $new_sheet_name = $_POST['sheet_name'];
         $conn = connect();
-        $query = "INSERT INTO sheets (fid, sname,`rows`,cols) VALUES ($file_id, '$new_sheet_name','10','10)";
+        $query = "INSERT INTO sheets (fid, sname,`rows`,cols) VALUES ($file_id, '$new_sheet_name','10','10')";
         if ($conn->query($query) === TRUE) {
             echo json_encode(['status' => 'success']);
         } else {
@@ -204,6 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
 
+
     $file_id = isset($_POST['file_id']) ? intval($_POST['file_id']) : 0;
     $sheet_id = isset($_POST['sheet_id']) ? intval($_POST['sheet_id']) : 0;
     $row = isset($_POST['row']) ? intval($_POST['row']) : 0;
@@ -253,7 +258,7 @@ function excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id)
         <th class='file-info-header'  colspan='" . ($cols + 1) . "' style='text-align: left; padding-left: 10px;'><strong>Last Modified:</strong> " . htmlspecialchars($file_info['lastModified']) . "</th>
         </tr>";
     $html .= "<tr style='text-align: center'>
-        <th class='file-info-header' ><a href='excel.php' class='action-link' style='color: blue'>&lt;=Back</a></th>";
+        <th class='file-info-header' ><a href='excel.php' style='color: blue'>&lt;=Back</a></th>";
 
     for ($j = 1; $j <= $cols; $j++) {
         $html .= "<th>" . chr(64 + $j) . "</th>"; // Column letters
@@ -268,7 +273,8 @@ function excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id)
         for ($j = 1; $j <= $cols; $j++) {
             $cell_key = "cell_{$i}_{$j}";
             $value = isset($cells[$cell_key]) ? htmlspecialchars($cells[$cell_key]) : '';
-            $html .= "<td><input type='text' name='$cell_key' data-row='$i' data-col='$j' value='$value' onchange='updateCell(this)' style='width:100%' /></td>";
+            $focused = $j === 1 ? 'autofocus' : '';
+            $html .= "<td><input type='text' $focused name='$cell_key' data-row='$i' data-col='$j' value='$value' onchange='updateCell(this)' style='width:100%' /></td>";
         }
         $html .= "</tr>";
     }
@@ -277,8 +283,9 @@ function excel($rows, $cols, $file_info, $cells, $sheets, $file_id, $sheet_id)
     foreach ($sheets as $sheet) {
         $sname = $sheet['sname'];
         $sid = $sheet['sid'];
-        $html .= "<td style='text-align: center;'>
-            <a href='edit.php?fid=$file_id&sid=$sid' class='action-link' style='color: blue'>$sname</a>
+        $className = $sheet['sid'] == $sheet_id ? 'myColor' : '';
+        $html .= "<td id='sheet_$sid' class='$className' style='text-align: center;'>
+            <a href='edit.php?fid=$file_id&sid=$sid'  class='action-link' style='color: blue'>$sname</a>
         </td>";
     }
 
@@ -320,6 +327,9 @@ echo '
         document.addEventListener("click", function(e) {
             if (e.target.closest("#context-menu")) return;
             contextMenu.style.display = "none";
+            if(e.target.tagName === "INPUT"){
+                currentInput = e.target;
+            }
         });
 
             document.getElementById("cut-cell").addEventListener("click", function() {
@@ -349,11 +359,42 @@ echo '
             contextMenu.style.display = "none";
         });
 
+document.addEventListener("keydown", function(e) {
+    if (!currentInput) return;
+    let row = parseInt(currentInput.getAttribute("data-row"));
+    let col = parseInt(currentInput.getAttribute("data-col"));
+    
+    switch(e.keyCode) {
+        case 37:
+            col--
+            break;
+        case 38:
+            row--;
+            break;
+        case 39:
+            col++;
+            break;
+        case 40:
+            row++;
+            break;
+    }
+
+    let nextInput = document.querySelector(`input[data-row="${row}"][data-col="${col}"]`);
+    currentInput = nextInput
+    if (nextInput) {
+        nextInput.focus();
+    } else {
+        console.log("No input found at row " + row + ", col " + col);
+    }
+});
+
+
+
         document.getElementById("insert_row").addEventListener("click", function() {
             var fileId = ' . $file_id . ';
             var sheetId = ' . $sheet_id . ';
             var rowNo = clickedCell.row;
-            
+
             fetch("", {
                 method: "POST",
                 headers: {
@@ -380,11 +421,13 @@ echo '
         });
 });
 
+
+
  document.getElementById("insert_col").addEventListener("click", function() {
             var fileId = ' . $file_id . ';
             var sheetId = ' . $sheet_id . ';
             var colNo = clickedCell.col;
-            
+
             fetch("", {
                 method: "POST",
                 headers: {
@@ -478,8 +521,16 @@ document.getElementById("delete_col").addEventListener("click", function() {
     contextMenu.style.display = "none";
 });
 
+document.addEventListener("DOMContentLoaded", function() {
+    var sheetLinks = document.querySelectorAll(".myColor");
 
+    if (sheetLinks.length > 0) {
+        sheetLinks[0].classList.add("selected-sheet");
+    }
     
+});
+
+
 
         function updateCell(input) {
             var row = input.getAttribute("data-row");
@@ -529,12 +580,14 @@ document.getElementById("delete_col").addEventListener("click", function() {
                         location.reload();
                     } else {
                         alert("Error creating sheet: " + data.message);
+
                     }
                 })
                 .catch(error => {
-                    console.error("Error:", error);
+                    confirm("Please Enter different name of the new sheet:");
                 });
             }
         }
+
     </script>
 ';

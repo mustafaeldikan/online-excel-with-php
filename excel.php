@@ -1,7 +1,5 @@
 <?php
 $conn = connect();
-
-
 function connect()
 {
     $servername = "localhost";
@@ -17,9 +15,7 @@ switch (isset($_GET['is']) ? $_GET['is'] : '') {
     case 'add_new_file':
         add_new_file($_GET['fname'], $_GET['lastModified']);
         break;
-        // case 'excel':
-        //     excel($_GET['rows'], $_GET['cols'],$_GET['file_info']);
-        //     break;
+       
     default:
         echo pageHeader("Student List");
         listele();
@@ -82,7 +78,7 @@ function add_new_file($fname, $lastModified)
                 "lastModified" => $lastModified,
             ]
         ];
-        $query2 = "INSERT INTO sheets(sname, `rows`, cols, fid) VALUES ('sheet2', 10, 10, $fid)";
+        $query2 = "INSERT INTO sheets(sname, `rows`, cols, fid) VALUES ('sheet1', 10, 10, $fid)";
         $conn->query($query2);
         echo json_encode($body);
     } else {

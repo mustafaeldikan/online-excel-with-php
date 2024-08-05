@@ -116,6 +116,13 @@ a:hover {
     text-align: center;
     padding: 10px;
 }
+.selected-sheet {
+  background-color: #649fd1; /* Light blue background */
+}
+
+.selected-sheet {
+  background-color: #d2f4cf; /* Light gray or any color you prefer */
+}
 
 
 
